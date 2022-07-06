@@ -811,6 +811,14 @@ class ClusterCdkStack(Stack):
             "HeadNodeLaunchTemplate",
             launch_template_data=ec2.CfnLaunchTemplate.LaunchTemplateDataProperty(
                 instance_type=head_node.instance_type,
+                # TODO WARNING: The hard-coded capacity reservation has been added to make multiple-nics integ tests
+                # use ODCR when running on pd4 instances.
+                # DO NOT MERGE this change in develop.
+                capacity_reservation_specification=ec2.CfnLaunchTemplate.CapacityReservationSpecificationProperty(
+                    capacity_reservation_target=ec2.CfnLaunchTemplate.CapacityReservationTargetProperty(
+                        capacity_reservation_id="cr-0fa65fcdbd597f551",
+                    )
+                ) if head_node.instance_type.startswith("p4d") else None,
                 cpu_options=ec2.CfnLaunchTemplate.CpuOptionsProperty(core_count=head_node.vcpus, threads_per_core=1)
                 if head_node.pass_cpu_options_in_launch_template
                 else None,
