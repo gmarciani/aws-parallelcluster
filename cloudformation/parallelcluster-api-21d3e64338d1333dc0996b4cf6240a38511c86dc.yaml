@@ -1,0 +1,364 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'AWS ParallelCluster API'
+
+Parameters:
+  Region:
+    Description: When set to a given region name (e.g. eu-west-1), the API can control resources in that region only. Set to '*' to control all regions.
+    Type: String
+    Default: '*'
+
+  ParallelClusterFunctionRole:
+    Description: |
+      When specified, the ARN of the execution role for the ParallelCluster Lambda function
+    Type: String
+    Default: ''
+
+  ApiDefinitionS3Uri:
+    Description: S3 URI of the ParallelCluster API spec
+    Type: String
+    Default: s3://<REGION>-aws-parallelcluster/parallelcluster/3.6.1/api/ParallelCluster.openapi.yaml
+
+  CustomDomainName:
+    Description: When specified, the custom domain name of the ParallelCluster API. Requires specifying a custom domain certificate
+    Type: String
+    Default: ''
+
+  CustomDomainCertificate:
+    Description: When specified, the ARN of the certificate for the custom domain name of the ParallelCluster API. Required when specifying a custom domain name
+    Type: String
+    Default: ''
+
+  CustomDomainHostedZoneId:
+    Description: When specified, the id of the Hosted Zone where the custom domain record of the ParallelCluster API is registered
+    Type: String
+    Default: ''
+
+  PoliciesTemplateUri:
+    Description: "S3 URI of the ParallelCluster Policies Template. Defaults to: s3://<REGION>-aws-parallelcluster/parallelcluster/3.6.1/templates/policies/policies.yaml"
+    Type: String
+    Default: ''
+
+  VpcEndpointId:
+    Description: When specified, configure a private API with the specified endpoint
+    Type: String
+    Default: ''
+
+  EnableIamAdminAccess:
+    Description: |
+      When set to true the ParallelCluster API takes care of IAM resource creation when deploying clusters or generating custom AMIs.
+      WARNING - setting this to true grants IAM admin privileges to the Lambda function
+    Type: String
+    Default: false
+    AllowedValues:
+      - true
+      - false
+
+  EnableFSxS3Access:
+    Description: |
+      When set to true the ParallelCluster API can access, write to the S3 buckets specified in the Filed FsxS3Bucket, it is needed to import/export from/to S3 when creating an FSx filesystem.
+      NOTE - setting this to true grants the Lambda function S3 Get*, List* and PutObject privileges on the buckets specified in FsxS3Buckets.
+    Type: String
+    Default: false
+    AllowedValues:
+      - true
+      - false
+
+  FsxS3Buckets:
+    Description: |
+      Comma separated list of S3 bucket ARNs, to allow the lambda function to import/export from/to S3 when creating an FSx filesystem.
+      NOTE - The setting is used only when EnableFSxS3Access is set to true. (example arn:aws:s3:::<S3_BUCKET_1>,arn:aws:s3:::<S3_BUCKET_2>)
+    Type: String
+    Default: ''
+    AllowedPattern: ^((arn:[a-z\-\*]*:s3:[a-z0-9\-]*:([0-9]{12})*:[^,\s\/]+)?(,arn:[a-z\-\*]*:s3:[a-z0-9\-]*:([0-9]{12})*:[^,\s\/]+)*)$|^\*$
+    ConstraintDescription: |
+      The list of S3 buckets is incorrectly formatted. The list should have the format: arn:<PARTITION>:s3:<REGION>:<ACCOUNT_ID>:<BUCKET_NAME>[,arn:<PARTITION>:s3:<REGION>:<ACCOUNT_ID>:<BUCKET_NAME>,...]
+      Example: arn:aws:s3:::test-bucket-1,arn:aws:s3:::test-bucket-2,arn:aws:s3:::test-bucket-3
+
+  PermissionsBoundaryPolicy:
+    Description: |
+      ARN of a IAM policy to use as PermissionsBoundary for all IAM resources created by ParallelCluster API.
+      When specified, IAM permissions assumed by the API are conditionally restricted to the usage of the given PermissionsBoundary
+    Type: String
+    Default: ''
+
+  CreateApiUserRole:
+    Description: Creates a IAM role authorized to invoke the API. The Api is configured with a resource based policy to grant invoke permission to the created user only.
+    Type: String
+    Default: true
+    AllowedValues:
+      - true
+      - false
+
+  CustomBucket:
+    Description: (Debug only) bucket to retrieve S3 artifacts for internal resources.
+    Type: String
+    Default: ''
+
+Mappings:
+  ParallelCluster:
+    Constants:
+      Version: 3.6.1  # major.minor.patch+alpha/beta_identifier
+      ShortVersion: 3.6.1  # major.minor.patch
+      Stage: prod
+
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 30
+    Tags:
+      'parallelcluster:version': !FindInMap [ParallelCluster, Constants, Version]
+
+  Api:
+    Auth:
+      DefaultAuthorizer: AWS_IAM
+      ResourcePolicy:
+        CustomStatements:
+          Effect: 'Deny'
+          Action: 'execute-api:Invoke'
+          Resource: ['execute-api:/*/*/*']
+          Principal: '*'
+          Condition:
+            StringNotLike:
+              # This allows also creds assumed through sts for the ParallelClusterApiUserRole role
+              aws:PrincipalArn: !If
+                - CreateApiUserRoleCondition
+                - !Sub
+                  - arn:${AWS::Partition}:*::${AWS::AccountId}:*/ParallelClusterApiUserRole-${StackIdSuffix}*
+                  - { StackIdSuffix: !Select [2, !Split ['/', !Ref 'AWS::StackId']] }
+                - '*'
+    TracingEnabled: True
+    EndpointConfiguration:
+      Type: REGIONAL
+    MethodSettings:
+      - HttpMethod: '*'
+        ResourcePath: '/*'
+        ThrottlingRateLimit: 100
+        ThrottlingBurstLimit: 10
+        MetricsEnabled: true
+
+Conditions:
+  UseCustomParallelClusterFunctionRole: !Not [!Equals [!Ref ParallelClusterFunctionRole, '']]
+  CreateIamResources: !Not [!Condition UseCustomParallelClusterFunctionRole]
+  UseCustomDomain: !Not [!Equals [!Ref CustomDomainName, '']]
+  UseRoute53Configuration: !Not [!Equals [!Ref CustomDomainHostedZoneId, '']]
+  UseCustomDomainAndRoute53Configuration: !And
+    - !Condition UseCustomDomain
+    - !Condition UseRoute53Configuration
+  UsePrivateVpcEndpoint: !And
+    - !Not [!Condition UseCustomDomainAndRoute53Configuration]
+    - !Not [!Equals [!Ref VpcEndpointId, '']]
+  DoNotUseCustomDomain: !And
+    - !Not [!Condition UsePrivateVpcEndpoint]
+    - !Not [!Condition UseCustomDomainAndRoute53Configuration]
+  CreateApiUserRoleCondition: !Equals [!Ref CreateApiUserRole, true]
+  UseCustomBucket: !Not [!Equals [!Ref CustomBucket, '']]
+  UseCustomPoliciesTemplateUri: !Not [!Equals [!Ref PoliciesTemplateUri, '']]
+
+Resources:
+  # Policies nested stack
+  PclusterPolicies:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateIamResources
+    Properties:
+      TemplateURL: !If
+        - UseCustomPoliciesTemplateUri
+        - !Ref PoliciesTemplateUri
+        - !Sub
+          - "https://${AWS::Region}-aws-parallelcluster.s3.${AWS::Region}.${AWS::URLSuffix}/parallelcluster/${Version}/templates/policies/policies.yaml"
+          - { Version: !FindInMap [ParallelCluster, Constants, Version] }
+      TimeoutInMinutes: 10
+      Parameters:
+        Region: !Ref Region
+        EnableFSxS3Access: !Ref EnableFSxS3Access
+        EnableIamAdminAccess: !Ref EnableIamAdminAccess
+        FsxS3Buckets: !Ref FsxS3Buckets
+        PermissionsBoundaryPolicy: !Ref PermissionsBoundaryPolicy
+        EnableBatchAccess: true
+
+  PclusterLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Sub
+        - PCLayer-${StackIdSuffix}
+        - { StackIdSuffix: !Select [2, !Split ['/', !Ref 'AWS::StackId']] }
+      Description: Library which contains aws-parallelcluster python package and dependencies
+      Content:
+        S3Bucket: !If [ UseCustomBucket, !Ref CustomBucket, !Sub "${AWS::Region}-aws-parallelcluster" ]
+        S3Key: !Sub
+          - parallelcluster/${Version}/layers/aws-parallelcluster/lambda-layer.zip
+          - { Version: !FindInMap [ParallelCluster, Constants, Version]}
+      CompatibleRuntimes:
+        - python3.9
+
+  # We need to define three AWS::Serverless::Api due to an issue with the handling of AWS::NoValue
+  # See related GitHub issue: https://github.com/aws/serverless-application-model/issues/1435
+  ApiGatewayApiWithCustomDomainAndRoute53Configuration:
+    Condition: UseCustomDomainAndRoute53Configuration
+    Type: AWS::Serverless::Api
+    Properties:
+      Tags:
+        'parallelcluster:version': !FindInMap [ParallelCluster, Constants, Version]
+      StageName: !FindInMap [ParallelCluster, Constants, Stage]
+      DefinitionBody:
+        Fn::Transform:
+          Name: AWS::Include
+          Parameters:
+            Location: !Ref ApiDefinitionS3Uri
+      Domain:
+        DomainName: !Ref CustomDomainName
+        CertificateArn: !Ref CustomDomainCertificate
+        Route53:
+          HostedZoneId: !Ref CustomDomainHostedZoneId
+
+  ApiGatewayApiWithoutCustomDomain:
+    Condition: DoNotUseCustomDomain
+    Type: AWS::Serverless::Api
+    Properties:
+      Tags:
+        'parallelcluster:version': !FindInMap [ParallelCluster, Constants, Version]
+      StageName: !FindInMap [ParallelCluster, Constants, Stage]
+      DefinitionBody:
+        Fn::Transform:
+          Name: AWS::Include
+          Parameters:
+            Location: !Ref ApiDefinitionS3Uri
+
+  ApiGatewayApiWithPrivateVpcEndpoint:
+    Condition: UsePrivateVpcEndpoint
+    Type: AWS::Serverless::Api
+    Properties:
+      Tags:
+        'parallelcluster:version': !FindInMap [ParallelCluster, Constants, Version]
+      StageName: !FindInMap [ParallelCluster, Constants, Stage]
+      DefinitionBody:
+        Fn::Transform:
+          Name: AWS::Include
+          Parameters:
+            Location: !Ref ApiDefinitionS3Uri
+      EndpointConfiguration:
+        Type: PRIVATE
+        VPCEndpointIds: [!Ref VpcEndpointId]
+      Auth:
+        DefaultAuthorizer: AWS_IAM
+        ResourcePolicy:
+          IntrinsicVpceWhitelist: [!Ref VpcEndpointId]
+
+  # Note that even for Chinese regions here we need to use apigateway.amazonaws.com instead of apigateway.amazonaws.com.cn
+  APIGatewayExecutionRole:
+   Type: AWS::IAM::Role
+   Properties:
+     AssumeRolePolicyDocument:
+       Version: 2012-10-17
+       Statement:
+         - Effect: Allow
+           Principal:
+             Service:
+               - apigateway.amazonaws.com
+           Action:
+             - 'sts:AssumeRole'
+     Policies:
+       - PolicyName: lambda-invoke
+         PolicyDocument:
+           Version: '2012-10-17'
+           Statement:
+             - Effect: Allow
+               Action: lambda:InvokeFunction
+               Resource: !GetAtt ParallelClusterFunction.Arn
+
+  ParallelClusterFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      TracingConfig:
+        Mode: Active
+      MemorySize: 2048
+      Timeout: 30
+      Role: !If [UseCustomParallelClusterFunctionRole, !Ref ParallelClusterFunctionRole, !GetAtt [ PclusterPolicies, Outputs.ParallelClusterLambdaRoleArn ]]
+      Tags:
+        - Key: 'parallelcluster:resource'
+          Value: api
+        - Key: 'parallelcluster:version'
+          Value: !FindInMap [ParallelCluster, Constants, Version]
+      Runtime: python3.9
+      Handler: pcluster.api.awslambda.entrypoint.lambda_handler
+      Layers:
+        - !Ref PclusterLayer
+      # Lambda fails creation without specifying a non-empty code or container
+      Code:
+        ZipFile: " "
+
+  ParallelClusterApiUserRole:
+    Type: AWS::IAM::Role
+    Condition: CreateApiUserRoleCondition
+    Properties:
+      RoleName:  !Sub
+        - ParallelClusterApiUserRole-${StackIdSuffix}
+        - { StackIdSuffix: !Select [2, !Split ['/', !Ref 'AWS::StackId']] }
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              AWS:
+                - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+      Policies:
+        - PolicyName: ParallelClusterApiInvokePolicy
+          PolicyDocument:
+            Statement:
+              - Action:
+                  - execute-api:Invoke
+                Effect: Allow
+                Resource: !Sub
+                  - arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*/*/*
+                  - ApiId: !If
+                    - UseCustomDomainAndRoute53Configuration
+                    - !Ref ApiGatewayApiWithCustomDomainAndRoute53Configuration
+                    - !If
+                      - UsePrivateVpcEndpoint
+                      - !Ref ApiGatewayApiWithPrivateVpcEndpoint
+                      - !Ref ApiGatewayApiWithoutCustomDomain
+            Version: '2012-10-17'
+
+  ### -----------
+
+  ParallelClusterFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ParallelClusterFunction}
+      RetentionInDays: 30
+
+Outputs:
+  ParallelClusterLambdaArn:
+    Description: 'ARN of the ParallelCluster Lambda function'
+    Value: !GetAtt ParallelClusterFunction.Arn
+
+  ParallelClusterApiInvokeUrl:
+    Description: 'Url to reach the API endpoint'
+    Export:
+      Name: !Sub ${AWS::StackName}-ParallelClusterApiInvokeUrl
+    Value: !If
+      - UseCustomDomain
+      - !Sub
+        - https://${CustomDomain}
+        - { CustomDomain: !Ref CustomDomainName }
+      - !Sub
+        - https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${StageName}
+        - Api: !If
+            - UsePrivateVpcEndpoint
+            - !Sub
+              - '${restApiId}-${vpceId}'
+              - { restApiId: !Ref ApiGatewayApiWithPrivateVpcEndpoint, vpceId: !Ref VpcEndpointId }
+            - !Ref ApiGatewayApiWithoutCustomDomain
+          StageName: !FindInMap [ParallelCluster, Constants, Stage]
+
+  ParallelClusterApiUserRole:
+    Condition: CreateApiUserRoleCondition
+    Export:
+      Name: !Sub ${AWS::StackName}-ParallelClusterApiUserRole
+    Description: 'IAM Role with permissions to invoke the ParallelCluster API'
+    Value: !GetAtt ParallelClusterApiUserRole.Arn
+
+  ParallelClusterLambdaLogGroup:
+    Value: !Ref ParallelClusterFunctionLogGroup
+    Description: 'LogGroup for the Lambda function implementing ParallelCluster Api'
