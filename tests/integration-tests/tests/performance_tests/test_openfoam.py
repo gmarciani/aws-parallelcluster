@@ -77,8 +77,10 @@ def test_openfoam(
         percentage_difference = perf_test_difference(elapsed_time, baseline_value)
         if percentage_difference < 0:
             outcome = "improvement"
+        elif percentage_difference <= PERF_TEST_DIFFERENCE_TOLERANCE:
+            outcome = "degradation (within tolerance)"
         else:
-            outcome = "degradation"
+            outcome = "degradation (above tolerance)"
         logging.info(
             f"Nodes: {node}, Baseline: {baseline_value} seconds, Observed: {elapsed_time} seconds, "
             f"Percentage difference: {percentage_difference}%, Outcome: {outcome}"

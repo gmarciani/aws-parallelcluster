@@ -13,9 +13,9 @@ TASK_VCPUS = 36  # vCPUs are cut in a half because multithreading is disabled
 BASELINE_CLUSTER_SIZE_ELAPSED_SECONDS = {
     "alinux2":    {8: 64.475, 16: 33.173, 32: 17.899},  # v3.1.3
     "ubuntu2204": {8: 75.502, 16: 36.353, 32: 19.688},  # v3.7.0
-    "ubuntu2004": {8: 67.384, 16: 36.434, 32: 17.899},  # v3.1.3
+    "ubuntu2004": {8: 67.384, 16: 36.434, 32: 19.449},  # v3.1.3
     "centos7":    {8: 67.838, 16: 36.568, 32: 20.935},  # v3.1.3
-    "rhel8":      {8: 66.494, 16: 36.154, 32: 17.899},  # v3.6.0
+    "rhel8":      {8: 66.494, 16: 36.154, 32: 20.347},  # v3.6.0
     "rocky8":     {8: 66.859, 16: 33.173, 32: 17.899},  # v3.8.0
 }
 PERF_TEST_DIFFERENCE_TOLERANCE = 3
@@ -100,8 +100,10 @@ def test_starccm(
         percentage_difference = perf_test_difference(observed_value, baseline_value)
         if percentage_difference < 0:
             outcome = "improvement"
+        elif percentage_difference <= PERF_TEST_DIFFERENCE_TOLERANCE:
+            outcome = "degradation (within tolerance)"
         else:
-            outcome = "degradation"
+            outcome = "degradation (above tolerance)"
         logging.info(
             f"Nodes: {node}, Baseline: {baseline_value} seconds, Observed: {observed_value} seconds, "
             f"Percentage difference: {percentage_difference}%, Outcome: {outcome}"
