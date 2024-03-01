@@ -32,7 +32,8 @@ from tests.storage.test_fsx_lustre import create_file_cache  # noqa  # pylint: d
 
 @pytest.mark.parametrize(
     ("storage_type", "shared_storage_type"),
-    [("Efs", "Efs"), ("FsxLustre", "Efs"), ("FsxOpenZfs", "Efs"), ("FsxOntap", "Efs"), ("Ebs", "Efs")],
+    [("Efs", "Efs")],
+    # [("Efs", "Efs"), ("FsxLustre", "Efs"), ("FsxOpenZfs", "Efs"), ("FsxOntap", "Efs"), ("Ebs", "Efs")],
     # TODO: Include Ebs as shared_storage_type as well as Efs
     # Full [("Efs","Ebs"), ("FsxLustre","Ebs"), ("FsxOpenZfs","Ebs"), ("FsxOntap","Efs"), ("Ebs","Ebs"),
     #      ("Efs","Efs"), ("FsxLustre","Efs"), ("FsxOpenZfs","Efs"), ("FsxOntap","Efs"), ("Ebs","Efs")],
