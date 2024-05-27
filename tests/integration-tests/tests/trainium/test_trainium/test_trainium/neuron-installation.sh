@@ -141,7 +141,7 @@ function main() {
   pip3 install pytest
 
   python3 -m pip config set global.extra-index-url "https://pip.repos.neuron.amazonaws.com"
-  PIPS='torch-neuronx==1.11.0.1.* neuronx-cc==2.* transformers'
+  PIPS='torch-neuronx==1.11.0.1.1.* neuronx-cc==2.* transformers'
   pip3 install ${PIPS}
 }
 
