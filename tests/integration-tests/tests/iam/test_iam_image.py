@@ -18,6 +18,7 @@ from retrying import retry
 from time_utils import minutes
 from utils import generate_stack_name
 
+from tests.common.permissions import create_image_roles
 from tests.common.utils import retrieve_latest_ami
 
 
@@ -30,7 +31,7 @@ def test_iam_roles(
     images_factory,
     test_datadir,
 ):
-    instance_profile, lambda_cleanup_role = _create_image_roles(create_roles_stack)
+    instance_profile, lambda_cleanup_role = create_image_roles(create_roles_stack)
 
     image = _build_image(images_factory, instance_profile, lambda_cleanup_role, os, pcluster_config_reader, region)
 
@@ -68,15 +69,15 @@ def _build_image(images_factory, instance_profile, lambda_cleanup_role, os, pclu
     return image
 
 
-def _create_image_roles(create_roles_stack):
-    # Create build image roles
-    image_roles_stack = create_roles_stack(
-        stack_prefix="integ-tests-iam-image-roles", roles_file="image-roles.cfn.yaml"
-    )
-    lambda_cleanup_role = image_roles_stack.cfn_outputs["BuildImageLambdaCleanupRole"]
-    instance_profile = image_roles_stack.cfn_outputs["BuildImageInstanceProfile"]
-    # instance_role = image_roles_stack.cfn_outputs["BuildImageInstanceRole"]
-    return instance_profile, lambda_cleanup_role
+# def _create_image_roles(create_roles_stack):
+#     # Create build image roles
+#     image_roles_stack = create_roles_stack(
+#         stack_prefix="integ-tests-iam-image-roles", roles_file="image-roles.cfn.yaml"
+#     )
+#     lambda_cleanup_role = image_roles_stack.cfn_outputs["BuildImageLambdaCleanupRole"]
+#     instance_profile = image_roles_stack.cfn_outputs["BuildImageInstanceProfile"]
+#     # instance_role = image_roles_stack.cfn_outputs["BuildImageInstanceRole"]
+#     return instance_profile, lambda_cleanup_role
 
 
 @retry(wait_fixed=minutes(1), stop_max_delay=minutes(60))
