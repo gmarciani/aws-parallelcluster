@@ -12,6 +12,7 @@ Scheduling:
   Scheduler: {{ scheduler }}
   {% if scheduler == "awsbatch" %}AwsBatchQueues:{% else %}SlurmQueues:{% endif %}
     - Name: queue-0
+      CapacityType: CAPACITY_BLOCK
       ComputeResources:
         - Name: compute-resource-0
           {% if scheduler == "awsbatch" %}
@@ -28,3 +29,5 @@ Scheduling:
       Networking:
         SubnetIds:
           - {{ private_subnet_id }}
+      CapacityReservationTarget:
+        CapacityReservationId: cr-09d98c8c61a80d6f3

@@ -14,7 +14,7 @@ HeadNode:
         - "R curl wget"
         - arg2
         - 'arg3 arg3'
-  InstanceType: {{ instance }}
+  InstanceType: c5.2xlarge
   Networking:
     SubnetId: {{ public_subnet_id }}
   Ssh:
@@ -32,7 +32,7 @@ HeadNode:
 LoginNodes:
   Pools:
     - Name: pool
-      InstanceType: {{ instance }}
+      InstanceType: c5.2xlarge
       Count: 3
       Networking:
         SubnetIds:
@@ -59,6 +59,7 @@ Scheduling:
   {% if scheduler == "awsbatch" %}AwsBatchQueues:{% else %}SlurmQueues:{% endif %}
     # queue with different quotes for custom bootstrap script
     - Name: bootstrap-scripts-args
+      CapacityType: CAPACITY_BLOCK
       CustomActions:
         OnNodeStart:
           Script: s3://{{ bucket_name }}/scripts/pre_install.sh
@@ -81,7 +82,8 @@ Scheduling:
           {% else %}
           Instances:
             - InstanceType: {{ instance }}
-          MinCount: 0
+          MinCount: 2
+          MaxCount: 2
           {% endif %}
       Networking:
         SubnetIds:
@@ -91,6 +93,7 @@ Scheduling:
           - BucketName: {{ bucket_name }}
     # queue with a failing post install script
     - Name: broken-post-install
+      CapacityType: CAPACITY_BLOCK
       CustomActions:
         OnNodeConfigured:
           Script: s3://{{ bucket_name }}/failing_post_install.sh
@@ -104,7 +107,7 @@ Scheduling:
           {% else %}
           Instances:
             - InstanceType: {{ instance }}
-          MinCount: 0
+          MinCount: 2
           MaxCount: 2
           {% endif %}
       Networking:
@@ -115,6 +118,7 @@ Scheduling:
           - BucketName: {{ bucket_name }}
             EnableWriteAccess: False
     - Name: rotation
+      CapacityType: CAPACITY_BLOCK
       ComputeResources:
         - Name: compute-i1
           {% if scheduler == "awsbatch" %}
@@ -124,11 +128,13 @@ Scheduling:
           Instances:
             - InstanceType: {{ instance }}
           MinCount: 1
+          MaxCount: 1
           {% endif %}
       Networking:
         SubnetIds:
           - {{ private_subnet_id }}
     - Name: ht-disabled
+      CapacityType: CAPACITY_BLOCK
       Networking:
         SubnetIds:
           - {{ private_subnet_id }}
@@ -141,7 +147,7 @@ Scheduling:
           {% else %}
           Instances:
             - InstanceType: {{ instance }}
-          MinCount: 1
+          MinCount: 2
           MaxCount: {{ max_queue_size }}
           {% endif %}
   SlurmSettings:
