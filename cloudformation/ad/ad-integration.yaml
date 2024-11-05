@@ -367,6 +367,8 @@ Resources:
 
   AdDomainAdminNode:
     Type: AWS::EC2::Instance
+    DependsOn:
+      - DirectoryDnsResolverRuleAssociation
     CreationPolicy:
       ResourceSignal:
         Timeout: PT15M
@@ -416,21 +418,12 @@ Resources:
               echo "Domain Name: ${DirectoryDomain}"
               echo "Domain Certificate Secret: ${DomainCertificateSecretArn}"
               echo "Domain Private Key Secret: ${DomainPrivateKeySecretArn}"
-              cat << EOF > /etc/resolv.conf
-              search           ${DirectoryDomain}
-              nameserver       ${DnsIp1}
-              nameserver       ${DnsIp2}
-              EOF
-              sed -i 's/PEERDNS=.*/PEERDNS=no/' /etc/sysconfig/network-scripts/ifcfg-eth0
-              chattr +i /etc/resolv.conf
               ADMIN_PW="${AdminPassword}"
               
               attempt=0
               max_attempts=5
               until [ $attempt -ge $max_attempts ]; do
                 attempt=$((attempt+1))
-                echo "[DEBUG] Content of /etc/resolv.conf is:"
-                cat /etc/resolv.conf
                 echo "[DEBUG] Resolving ${DirectoryDomain} ..."
                 dig ${DirectoryDomain} 
                 echo "Joining domain (attempt $attempt/$max_attempts) ..."
@@ -475,6 +468,59 @@ Resources:
                 DomainPrivateKeySecretArn: !Ref DomainPrivateKeySecret,
                 Admin: !If [UseMicrosoftAD, "Admin", "Administrator" ]
             }
+
+  DirectoryDnsResolverSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow DNS access
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: -1
+          IpProtocol: "-1"
+          ToPort: -1
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 53
+          IpProtocol: tcp
+          ToPort: 53
+      VpcId: !If [CreateVPC, !Ref PclusterVpc, !Ref Vpc ]
+
+  DirectoryDnsResolverEndpoint:
+    Type: AWS::Route53Resolver::ResolverEndpoint
+    Properties:
+      Name: !Sub
+        - ${domainNameHyphen}-endpoint-out
+        - { domainNameHyphen: !Join [ "-", !Split [ ".", !Ref DomainName ] ] }
+      Direction: OUTBOUND
+      IpAddresses:
+        - SubnetId: !If [CreateVPC, !Ref PclusterVpcSubnet1, !Ref PrivateSubnetOne ]
+        - SubnetId: !If [CreateVPC, !Ref PclusterVpcSubnet2, !Ref PrivateSubnetTwo ]
+      SecurityGroupIds:
+        - !Ref DirectoryDnsResolverSecurityGroup
+
+  DirectoryDnsResolverRule:
+    Type: AWS::Route53Resolver::ResolverRule
+    Properties:
+      DomainName: !Ref DomainName
+      Name: !Sub
+        - ${domainNameHyphen}-rule
+        - { domainNameHyphen: !Join [ "-", !Split [ ".", !Ref DomainName ] ] }
+      ResolverEndpointId: !Ref DirectoryDnsResolverEndpoint
+      RuleType: FORWARD
+      TargetIps:
+        - Ip: !GetAtt Prep.DnsIpAddress1
+          Port: 53
+        - Ip: !GetAtt Prep.DnsIpAddress2
+          Port: 53
+
+  DirectoryDnsResolverRuleAssociation:
+    Type: AWS::Route53Resolver::ResolverRuleAssociation
+    Properties:
+      Name: !Sub
+        - ${domainNameHyphen}-rule-association
+        - { domainNameHyphen: !Join [ "-", !Split [ ".", !Ref DomainName ] ] }
+      ResolverRuleId: !Ref DirectoryDnsResolverRule
+      VPCId: !If [CreateVPC, !Ref PclusterVpc, !Ref Vpc ]
 
   PostRole:
     Type: AWS::IAM::Role
