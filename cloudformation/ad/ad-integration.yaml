@@ -1,5 +1,5 @@
 
-Description: AWS ParallelCluster ActiveDirectory Database
+Description: AWS ParallelCluster ActiveDirectory
 
 Parameters:
   DomainName:
