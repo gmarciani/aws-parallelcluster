@@ -30,7 +30,7 @@ from troposphere.ec2 import (
 from troposphere.iam import InstanceProfile, Role
 
 TAGS_PREFIX = "ParallelCluster"
-BASTION_INSTANCE_TYPE = "c5.large"
+BASTION_INSTANCE_TYPE = "t3.large"
 
 
 class Gateways(Enum):
