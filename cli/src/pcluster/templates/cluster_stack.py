@@ -1243,12 +1243,12 @@ class ClusterCdkStack:
                         },
                     )
                 ),
-                tag_specifications=[
-                    ec2.CfnLaunchTemplate.TagSpecificationProperty(
-                        resource_type="volume",
-                        tags=get_default_volume_tags(self._stack_name, "HeadNode") + get_custom_tags(self.config),
-                    ),
-                ],
+                # tag_specifications=[
+                #     ec2.CfnLaunchTemplate.TagSpecificationProperty(
+                #         resource_type="volume",
+                #         tags=get_default_volume_tags(self._stack_name, "HeadNode") + get_custom_tags(self.config),
+                #     ),
+                # ],
             ),
         )
 
@@ -1504,6 +1504,7 @@ class ClusterCdkStack:
                 launch_template_id=head_node_launch_template.ref,
                 version=head_node_launch_template.attr_latest_version_number,
             ),
+            propagate_tags_to_volume_on_creation=True,
             tags=get_default_instance_tags(
                 self._stack_name, self.config, head_node, "HeadNode", self.shared_storage_infos
             )
