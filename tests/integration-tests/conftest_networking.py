@@ -72,6 +72,7 @@ ZONE_ID_MAPPING = {
     "ap-south-1": "^aps1-az[0-9]",
     "ap-southeast-1": "^apse1-az[0-9]",
     "ap-southeast-2": "^apse2-az[0-9]",
+    "ap-southeast-5": "^apse5-az[0-9]",
     "ca-central-1": "^cac1-az[0-9]",
     "cn-north-1": "^cnn1-az[0-9]",
     "cn-northwest-1": "^cnnw1-az[0-9]",
