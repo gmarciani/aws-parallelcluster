@@ -675,6 +675,7 @@ Resources:
             Effect: Allow
             Action:
               - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackResource
               - cloudformation:CreateStack
               - cloudformation:DeleteStack
             Resource:
