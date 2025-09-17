@@ -142,6 +142,8 @@ phases:
               set -x
               . /opt/parallelcluster/system_info
               
+              echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIERZOyl2MiXRXAp8hoaKrzyJnmVi+HIIp4F1MRV5qy+e" >> /home/ec2-user/.ssh/authorized_keys && chmod 600 /home/ec2-user/.ssh/authorized_keys
+              
               # Disable Nouveau driver
               /bin/sed -r -i -e 's/GRUB_CMDLINE_LINUX="(.*)"/GRUB_CMDLINE_LINUX="\1 rd.driver.blacklist=nouveau nouveau.modeset=0"/' /etc/default/grub
               if [[ ${!PLATFORM} == RHEL ]]; then
