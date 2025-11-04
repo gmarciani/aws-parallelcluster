@@ -972,7 +972,7 @@ class PclusterLambdaConstruct(Construct):
             handler=f"{handler_func}.handler",
             memory_size=128,
             role=execution_role,
-            runtime="python3.9",
+            runtime="python3.12",
             timeout=timeout,
             vpc_config=awslambda.CfnFunction.VpcConfigProperty(
                 security_group_ids=config.lambda_functions_vpc_config.security_group_ids,
