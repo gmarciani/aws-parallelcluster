@@ -55,6 +55,8 @@ package_upgrade: false
 repo_upgrade: none
 
 datasource_list: [ Ec2, None ]
+output:
+  all: '| awk ''{ print strftime("%Y-%m-%d %H:%M:%S"), $0; fflush() }'' | tee -a /var/log/cloud-init-output.log | logger -t user-data -s 2>/dev/ttyS0'
 
 --==BOUNDARY==
 Content-Type: text/x-shellscript; charset="us-ascii"

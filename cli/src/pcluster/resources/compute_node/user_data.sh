@@ -49,7 +49,7 @@ repo_upgrade: none
 datasource_list: [ Ec2, None ]
 
 output:
-  all: "| tee -a /var/log/cloud-init-output.log | logger -t user-data -s 2>/dev/ttyS0"
+  all: '| awk ''{ print strftime("%Y-%m-%d %H:%M:%S"), $0; fflush() }'' | tee -a /var/log/cloud-init-output.log | logger -t user-data -s 2>/dev/ttyS0'
 write_files:
   - path: /tmp/dna.json
     permissions: '0644'
