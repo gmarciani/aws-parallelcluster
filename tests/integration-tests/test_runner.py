@@ -17,6 +17,7 @@ import re
 import sys
 import time
 import urllib.request
+import uuid
 from tempfile import TemporaryDirectory
 
 import argparse
@@ -24,6 +25,8 @@ import boto3
 import pytest
 from assertpy import assert_that
 from conftest_networking import unmarshal_az_override
+from framework.framework_constants import METADATA_DEFAULT_REGION, METADATA_TABLE
+from framework.metadata_table_manager import MetadataTableManager, PhaseMetadata, TestMetadata
 from framework.tests_configuration.config_renderer import dump_rendered_config_file, read_config_file
 from framework.tests_configuration.config_utils import get_all_regions
 from framework.tests_configuration.config_validator import assert_valid_config
@@ -113,6 +116,54 @@ TEST_DEFAULTS = {
     "build_image_roles_stack": None,
     "capacity_reservation_id": None,
 }
+
+
+def _get_reporting_region():
+    """Get the reporting region based on the current AWS partition."""
+    try:
+        session = boto3.session.Session()
+        region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+        if region.startswith("cn-"):
+            return "cn-north-1"
+        elif region.startswith("us-gov-"):
+            return "us-gov-west-1"
+        return METADATA_DEFAULT_REGION
+    except Exception:
+        return METADATA_DEFAULT_REGION
+
+
+def _publish_early_failure_metadata(error_message: str, args=None):
+    """Publish metadata for early failures that occur before pytest hooks are triggered."""
+    try:
+        reporting_region = _get_reporting_region()
+        metadata_table_mgr = MetadataTableManager(reporting_region, METADATA_TABLE)
+        current_time = time.time()
+
+        global_build_number = getattr(args, "global_build_number", 0) or 0 if args else 0
+
+        test_metadata = TestMetadata(
+            name="early_failure",
+            id=uuid.uuid4().hex,
+            region="None",
+            os="None",
+            feature="early_failure",
+            instance_type="None",
+            global_build_number=global_build_number,
+            cli_commit=getattr(args, "pcluster_git_ref", None) or "None" if args else "None",
+            cookbook_commit=getattr(args, "cookbook_git_ref", None) or "None" if args else "None",
+            node_commit=getattr(args, "node_git_ref", None) or "None" if args else "None",
+            cluster_stack_name="None",
+            cw_log_group_name="None",
+            setup_metadata=PhaseMetadata(name="setup", status="failed", start_time=START_TIME, end_time=current_time),
+            call_metadata=PhaseMetadata(name="call", status="None", start_time=0, end_time=0),
+            teardown_metadata=PhaseMetadata(name="teardown", status="None", start_time=0, end_time=0),
+        )
+
+        logger.info(f"Publishing early failure metadata to DynamoDB. Error: {error_message}")
+        metadata_table_mgr.publish_metadata([test_metadata])
+
+    except Exception as e:
+        logger.error(f"Failed to publish early failure metadata to DynamoDB: {e}")
 
 
 def _init_argparser():
@@ -904,47 +955,53 @@ def main():
     """Entrypoint for tests executor."""
     if sys.version_info < (3, 7):
         logger.error("test_runner requires python >= 3.7")
+        _publish_early_failure_metadata("test_runner requires python >= 3.7")
         exit(1)
 
     args = _init_argparser().parse_args()
 
-    # Load additional instance types data, if provided.
-    # This step must be done before loading test config files in order to resolve instance type placeholders.
-    if args.instance_types_data:
-        InstanceTypesData.load_additional_instance_types_data(args.instance_types_data)
+    try:
+        # Load additional instance types data, if provided.
+        # This step must be done before loading test config files in order to resolve instance type placeholders.
+        if args.instance_types_data:
+            InstanceTypesData.load_additional_instance_types_data(args.instance_types_data)
 
-    _check_args(args)
-    logger.info("Parsed test_runner parameters {0}".format(args))
+        _check_args(args)
+        logger.info("Parsed test_runner parameters {0}".format(args))
 
-    # Unset any proxies used to avoid network issues with tests, such as DCV
-    unset_proxy()
+        # Unset any proxies used to avoid network issues with tests, such as DCV
+        unset_proxy()
 
-    _make_logging_dirs(args.output_dir)
+        _make_logging_dirs(args.output_dir)
 
-    if args.sequential:
-        _run_sequential(args)
-    else:
-        _run_parallel(args)
+        if args.sequential:
+            _run_sequential(args)
+        else:
+            _run_parallel(args)
 
-    logger.info("All tests completed!")
+        logger.info("All tests completed!")
 
-    reports_output_dir = "{base_dir}/{out_dir}".format(base_dir=args.output_dir, out_dir=OUT_DIR)
-    if "junitxml" in args.reports:
-        generate_junitxml_merged_report(reports_output_dir)
+        reports_output_dir = "{base_dir}/{out_dir}".format(base_dir=args.output_dir, out_dir=OUT_DIR)
+        if "junitxml" in args.reports:
+            generate_junitxml_merged_report(reports_output_dir)
 
-    if "json" in args.reports:
-        logger.info("Generating tests report")
-        generate_json_report(reports_output_dir)
-    if args.generate_historical_report:
-        today_number = (datetime.date.today() - datetime.date(2020, 1, 1)).days
-        if today_number % 5 == 0:
-            # Launch time report is generated once every 5 days
-            generate_launch_time_report(reports_output_dir)
-        generate_performance_report(reports_output_dir)
+        if "json" in args.reports:
+            logger.info("Generating tests report")
+            generate_json_report(reports_output_dir)
+        if args.generate_historical_report:
+            today_number = (datetime.date.today() - datetime.date(2020, 1, 1)).days
+            if today_number % 5 == 0:
+                # Launch time report is generated once every 5 days
+                generate_launch_time_report(reports_output_dir)
+            generate_performance_report(reports_output_dir)
 
-    if "cw" in args.reports:
-        logger.info("Publishing CloudWatch metrics")
-        generate_cw_report(reports_output_dir, args.cw_namespace, args.cw_region, args.cw_timestamp_day_start)
+        if "cw" in args.reports:
+            logger.info("Publishing CloudWatch metrics")
+            generate_cw_report(reports_output_dir, args.cw_namespace, args.cw_region, args.cw_timestamp_day_start)
+
+    except Exception as e:
+        _publish_early_failure_metadata(str(e), args)
+        raise
 
 
 if __name__ == "__main__":
