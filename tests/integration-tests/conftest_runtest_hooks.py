@@ -75,6 +75,9 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
     # be "setup", "call", "teardown"
     setattr(item, "rep_" + rep.when, rep)
 
+    # Track execution count for flaky test detection (set by pytest-rerunfailures)
+    execution_count = getattr(item, "execution_count", 1)
+
     if rep.when in ["setup", "call"] and rep.failed:
         # TODO clean this up to not use the exception info here.  Reassigning the
         # call to setup messes up timestamps for setup vs call.  For now this will
@@ -88,6 +91,19 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
             update_failed_tests_config(item)
         except Exception as e:
             logging.error("Failed when generating config for failed tests: %s", e, exc_info=True)
+
+        # Mark the test as having failed on first attempt for flaky test tracking
+        if execution_count == 1:
+            setattr(item, "failed_first_attempt", True)
+
+    # If test passed on a retry but failed on first attempt, add a flaky property
+    # The test will still show as passed, but the property makes it searchable/filterable
+    if rep.when == "call" and rep.passed and getattr(item, "failed_first_attempt", False):
+        flaky_prop = ("flaky", "true")
+        if flaky_prop not in item.user_properties:
+            item.user_properties.append(flaky_prop)
+        logging.info(f"Test {item.nodeid} marked as flaky (passed on retry)")
+
     # Set the approximate start time for the test
     try:
         publish_test_metrics(item, rep)
