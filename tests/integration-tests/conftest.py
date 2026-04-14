@@ -82,6 +82,7 @@ from utils import (
     get_similar_instance_types,
     get_vpc_snakecase_value,
     random_alphanumeric,
+    skip_deletion,
     to_pascal_case,
 )
 from xdist import get_xdist_worker_id
@@ -169,6 +170,18 @@ def pytest_addoption(parser):
     )
     parser.addoption(
         "--no-delete", action="store_true", default=False, help="Don't delete stacks after tests are complete."
+    )
+    parser.addoption(
+        "--retain-on-failure",
+        action="store_true",
+        default=False,
+        help="Retain cluster stacks when a test fails, but still delete them on success.",
+    )
+    parser.addoption(
+        "--retain-on-failure-max",
+        type=int,
+        default=3,
+        help="Maximum number of clusters to retain globally when --retain-on-failure is set. (default: 3)",
     )
     parser.addoption(
         "--retain-ad-stack", action="store_true", default=False, help="Retain AD stack and corresponding VPC stack."
@@ -442,7 +455,28 @@ def clusters_factory(request, region):
         return cluster
 
     yield _cluster_factory
-    if not request.config.getoption("no_delete"):
+    if skip_deletion(request):
+        # Check if we've hit the global cap on retained clusters.
+        retained_count = getattr(request.session, "_retained_cluster_count", 0)
+        max_retained = request.config.getoption("retain_on_failure_max")
+        num_clusters = len(factory._ClustersFactory__created_clusters)
+        if retained_count + num_clusters <= max_retained:
+            logging.warning("Skipping deletion of cluster(s). Retained so far: %d", retained_count + num_clusters)
+            request.session._retained_cluster_count = retained_count + num_clusters
+            # Record the region so that session-scoped fixtures (cfn_stacks_factory) retain
+            # the supporting infrastructure (VPC, IAM stacks) for this region.
+            retain_regions = getattr(request.session, "_retain_on_failure_regions", None)
+            if retain_regions is None:
+                request.session._retain_on_failure_regions = set()
+            request.session._retain_on_failure_regions.add(region)
+        else:
+            logging.warning(
+                "Retain-on-failure cap reached (%d/%d). Deleting cluster(s) for this test.",
+                retained_count,
+                max_retained,
+            )
+            factory.destroy_all_clusters(test_passed=False)
+    else:
         try:
             test_passed = request.node.rep_call.passed
         except AttributeError:
@@ -938,14 +972,20 @@ def cfn_stacks_factory(request):
     """Define a fixture to manage the creation and destruction of CloudFormation stacks."""
     factory = CfnStacksFactory(request.config.getoption("credential"))
     yield factory
-    if not request.config.getoption("no_delete"):
+    if skip_deletion(request):
+        logging.warning("Skipping deletion of CFN stacks.")
+    else:
         excluded_stacks = []
+        excluded_regions = getattr(request.session, "_retain_on_failure_regions", set())
+        if excluded_regions:
+            logging.warning(
+                "Skipping deletion of CFN stacks in regions %s because --retain-on-failure is set and tests failed",
+                excluded_regions,
+            )
         if request.config.getoption("retain_ad_stack"):
             excluded_stacks.extend(["vpc", "SimpleAD", "MicrosoftAD"])
             logging.warning("Skipping deletion of AD and VPC stacks because --retain-ad-stack option is set")
-        factory.delete_all_stacks(excluded_stacks)
-    else:
-        logging.warning("Skipping deletion of CFN stacks because --no-delete option is set")
+        factory.delete_all_stacks(excluded_stacks, excluded_regions=excluded_regions)
 
 
 @pytest.fixture()
@@ -1031,10 +1071,10 @@ def initialize_cli_creds(request):
 
         yield cli_creds
 
-        if not request.config.getoption("no_delete"):
-            stack_factory.delete_all_stacks()
+        if skip_deletion(request):
+            logging.warning("Skipping deletion of CLI credential stacks.")
         else:
-            logging.warning("Skipping deletion of CFN stacks because --no-delete option is set")
+            stack_factory.delete_all_stacks()
 
 
 @pytest.fixture(scope="session", autouse=True)

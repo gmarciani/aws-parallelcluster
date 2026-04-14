@@ -42,7 +42,7 @@ usage: test_runner.py [-h] --key-name KEY_NAME --key-path KEY_PATH [-n PARALLELI
                       [--pcluster-installer-path PCLUSTER_INSTALLER_PATH] [--pre-install PRE_INSTALL] [--post-install POST_INSTALL] [--instance-types-data INSTANCE_TYPES_DATA] [--custom-ami CUSTOM_AMI] [--pcluster-git-ref PCLUSTER_GIT_REF] [--cookbook-git-ref COOKBOOK_GIT_REF]
                       [--node-git-ref NODE_GIT_REF] [--ami-owner AMI_OWNER] [--available-amis-oss-x86 [AVAILABLE_AMIS_OSS_X86 ...]] [--available-amis-oss-arm [AVAILABLE_AMIS_OSS_ARM ...]] [--benchmarks] [--benchmarks-target-capacity BENCHMARKS_TARGET_CAPACITY] [--benchmarks-max-time BENCHMARKS_MAX_TIME]
                       [--scaling-test-config SCALING_TEST_CONFIG] [--cluster-custom-resource-service-token CLUSTER_CUSTOM_RESOURCE_SERVICE_TOKEN] [--resource-bucket RESOURCE_BUCKET] [--lambda-layer-source LAMBDA_LAYER_SOURCE] [--api-definition-s3-uri API_DEFINITION_S3_URI]
-                      [--api-infrastructure-s3-uri API_INFRASTRUCTURE_S3_URI] [--api-uri API_URI] [--policies-uri POLICIES_URI] [--vpc-stack VPC_STACK] [--cluster CLUSTER] [--no-delete] [--delete-logs-on-success] [--stackname-suffix STACKNAME_SUFFIX] [--dry-run]
+                      [--api-infrastructure-s3-uri API_INFRASTRUCTURE_S3_URI] [--api-uri API_URI] [--policies-uri POLICIES_URI] [--vpc-stack VPC_STACK] [--cluster CLUSTER] [--no-delete] [--retain-on-failure] [--retain-on-failure-max RETAIN_ON_FAILURE_MAX] [--delete-logs-on-success] [--stackname-suffix STACKNAME_SUFFIX] [--dry-run]
                       [--iam-user-role-stack-name IAM_USER_ROLE_STACK_NAME] [--directory-stack-name DIRECTORY_STACK_NAME] [--slurm-database-stack-name SLURM_DATABASE_STACK_NAME] [--slurm-dbd-stack-name SLURM_DBD_STACK_NAME] [--munge-key-secret-arn MUNGE_KEY_SECRET_ARN]
                       [--external-shared-storage-stack-name EXTERNAL_SHARED_STORAGE_STACK_NAME] [--bucket-name BUCKET_NAME] [--custom-security-groups-stack-name CUSTOM_SECURITY_GROUPS_STACK_NAME] [--force-run-instances] [--force-elastic-ip] [--retain-ad-stack] [--proxy-stack PROXY_STACK]
                       [--build-image-roles-stack BUILD_IMAGE_ROLES_STACK] [--api-stack API_STACK]
@@ -164,6 +164,10 @@ Debugging/Development options:
                         Name of an existing vpc stack. (default: None)
   --cluster CLUSTER     Use an existing cluster instead of creating one. (default: None)
   --no-delete           Don't delete stacks after tests are complete. (default: False)
+  --retain-on-failure
+                        Retain cluster stacks when a test fails, but still delete them on success. (default: False)
+  --retain-on-failure-max RETAIN_ON_FAILURE_MAX
+                        Maximum number of clusters to retain globally when --retain-on-failure is set. (default: 3)
   --delete-logs-on-success
                         delete CloudWatch logs when a test succeeds (default: False)
   --stackname-suffix STACKNAME_SUFFIX

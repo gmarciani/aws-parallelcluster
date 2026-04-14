@@ -84,6 +84,8 @@ TEST_DEFAULTS = {
     "api_definition_s3_uri": None,
     "api_infrastructure_s3_uri": None,
     "no_delete": False,
+    "retain_on_failure": False,
+    "retain_on_failure_max": 3,
     "benchmarks": False,
     "benchmarks_target_capacity": 200,
     "benchmarks_max_time": 30,
@@ -419,6 +421,18 @@ def _init_argparser():
         default=TEST_DEFAULTS.get("no_delete"),
     )
     debug_group.add_argument(
+        "--retain-on-failure",
+        action="store_true",
+        help="Retain cluster stacks when a test fails, but still delete them on success.",
+        default=TEST_DEFAULTS.get("retain_on_failure"),
+    )
+    debug_group.add_argument(
+        "--retain-on-failure-max",
+        type=int,
+        help="Maximum number of clusters to retain globally when --retain-on-failure is set. (default: 3)",
+        default=TEST_DEFAULTS.get("retain_on_failure_max"),
+    )
+    debug_group.add_argument(
         "--delete-logs-on-success",
         help="delete CloudWatch logs when a test succeeds",
         action="store_true",
@@ -725,6 +739,10 @@ def _set_custom_stack_args(args, pytest_args):  # noqa: C901
 
     if args.no_delete:
         pytest_args.append("--no-delete")
+
+    if args.retain_on_failure:
+        pytest_args.append("--retain-on-failure")
+        pytest_args.extend(["--retain-on-failure-max", str(args.retain_on_failure_max)])
 
     if args.force_run_instances:
         pytest_args.append("--force-run-instances")

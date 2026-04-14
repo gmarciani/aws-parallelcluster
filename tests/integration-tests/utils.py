@@ -48,6 +48,34 @@ REPORTING_REGION_MAP = {
 }
 
 
+def skip_deletion(request):
+    """Return True if resource deletion should be skipped.
+
+    Deletion is skipped when:
+    - --no-delete is set (always skip), or
+    - --retain-on-failure is set AND the test failed
+
+    In case of any exception, defaults to not skipping deletion (i.e. resources are cleaned up).
+    """
+    try:
+        if request.config.getoption("no_delete"):
+            return True
+        if request.config.getoption("retain_on_failure"):
+            try:
+                # Function/class-scoped fixtures have access to the individual test result.
+                test_passed = request.node.rep_call.passed
+            except AttributeError:
+                # Session-scoped fixtures (e.g. cfn_stacks_factory) don't have rep_call.
+                # Fall back to the session-wide failure counter: retain resources if any test failed.
+                test_passed = not request.session.testsfailed
+            if not test_passed:
+                return True
+    except Exception:
+        logging.error("Failed to determine deletion policy for test resources, defaulting to delete.")
+        return False
+    return False
+
+
 def _format_stack_error(message, stack_events=None, cluster_details=None) -> str:
     if cluster_details:
         if "message" in cluster_details:
