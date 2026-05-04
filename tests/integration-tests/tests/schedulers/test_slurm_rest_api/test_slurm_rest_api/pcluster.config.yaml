@@ -14,8 +14,8 @@ HeadNode:
   Ssh:
     KeyName: {{ key_name }}
   CustomActions:
-    OnNodeStart:
-      Script: {{ rebuild_slurm_script_uri }}
+#    OnNodeStart:
+#      Script: {{ rebuild_slurm_script_uri }}
     OnNodeConfigured:
       Script: {{ configure_slurmrestd_script_uri }}
       Args:
