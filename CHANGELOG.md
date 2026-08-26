@@ -16,6 +16,7 @@ CHANGELOG
 
 **CHANGES**
 - The validator `ClusterNameValidator` now limits cluster names to 40 characters when using `ExternalSlurmdbd`,
+- Test cherry-pick entry 3
   consistent with the existing limit for `Database`. This prevents runtime failures caused by MySQL's table name length limit.
 - The validator `MultiNetworkInterfacesInstancesValidator` now also covers single-network-card instances with EFA enabled, which are launched with multiple network interfaces and therefore cannot be auto-assigned a public IP.
 - The CLI now requires the additional permission `tag:GetResources`, which it uses to resolve login nodes load balancer ARNs by tags (see the related bugfix).
