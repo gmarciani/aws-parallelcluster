@@ -1207,6 +1207,13 @@ class ClusterCdkStack:
                 security_groups=[sg.ref for sg in security_groups],
                 subnet_id=subnet_id,
             )
+            # EFS allows a single mount target per AZ: if the mount target already exists in a subnet still used by
+            # the cluster, keep it there, because moving it to another subnet of the same AZ makes the update fail.
+            existing_subnet_id = self.config.existing_efs_mount_target_subnets.get(
+                self.stack.resolve(efs_resource.logical_id)
+            )
+            if existing_subnet_id in self.config.compute_subnet_ids + [self.config.head_node.networking.subnet_id]:
+                efs_resource.subnet_id = existing_subnet_id
             efs_resource.cfn_options.deletion_policy = efs_resource.cfn_options.update_replace_policy = deletion_policy
             checked_availability_zones.append(availability_zone)
 
